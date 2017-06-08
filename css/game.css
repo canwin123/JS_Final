@@ -8,6 +8,7 @@
 .actor  { position: absolute;  }
 .coin   { background-image: url(../image/coin.png); background-size:100% 100%;}
 .player { background-image: url(../image/r1.png); background-size:100% 100%; }
+.floatfloor { background-image: url(../image/floatfloor.png); background-size:100% 100%; }
 
 .game {
   overflow:hidden;

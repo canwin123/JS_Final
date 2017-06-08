@@ -12,6 +12,7 @@ var simpleLevelPlan = [
 var leftCount = 0;
 var rightCount = 0;
 var isJump = false;
+var touchfloor = false;
 
 function Level(plan) {
   this.width = plan[0].length;
@@ -35,30 +36,31 @@ function Level(plan) {
     this.grid.push(gridLine);
   }
 
-  this.player = this.actors.filter(function(actor) {
+  this.player = this.actors.filter(function (actor) {
     return actor.type == "player";
   })[0];
   this.status = this.finishDelay = null;
 }
 
-Level.prototype.isFinished = function() {
+Level.prototype.isFinished = function () {
   return this.status != null && this.finishDelay < 0;
 };
 
 function Vector(x, y) {
   this.x = x; this.y = y;
 }
-Vector.prototype.plus = function(other) {
+Vector.prototype.plus = function (other) {
   return new Vector(this.x + other.x, this.y + other.y);
 };
-Vector.prototype.times = function(factor) {
+Vector.prototype.times = function (factor) {
   return new Vector(this.x * factor, this.y * factor);
 };
 
 var actorChars = {
   "@": Player,
   "o": Coin,
-  "=": Lava, "|": Lava, "v": Lava
+  "=": Lava, "|": Lava, "v": Lava,
+  "~": FloatFloor
 };
 
 function Player(pos) {
@@ -89,6 +91,13 @@ function Coin(pos) {
 }
 Coin.prototype.type = "coin";
 
+function FloatFloor(pos) {
+  this.pos = pos;
+  this.size = new Vector(2, 1);
+  this.speed = new Vector(2, 0);
+}
+FloatFloor.prototype.type = "floatfloor";
+
 var simpleLevel = new Level(simpleLevelPlan);
 
 function elt(name, className) {
@@ -108,41 +117,41 @@ function DOMDisplay(parent, level) {
 
 var scale = 20;
 
-DOMDisplay.prototype.drawBackground = function() {
+DOMDisplay.prototype.drawBackground = function () {
   var table = elt("table", "background");
   table.style.width = this.level.width * scale + "px";
-  this.level.grid.forEach(function(row) {
+  this.level.grid.forEach(function (row) {
     var rowElt = table.appendChild(elt("tr"));
     rowElt.style.height = scale + "px";
-    row.forEach(function(type) {
+    row.forEach(function (type) {
       rowElt.appendChild(elt("td", type));
     });
   });
   return table;
 };
 
-DOMDisplay.prototype.drawActors = function() {
+DOMDisplay.prototype.drawActors = function () {
   var wrap = elt("div");
-  this.level.actors.forEach(function(actor) {
+  this.level.actors.forEach(function (actor) {
     var rect = wrap.appendChild(elt("div",
-                                    "actor " + actor.type));
-    if(actor.type == "player"){
-      if(isJump){
-        if(leftCount > 0)
+      "actor " + actor.type));
+    if (actor.type == "player") {
+      if (isJump) {
+        if (leftCount > 0)
           rect.style.backgroundImage = "url(image/jumpl.png)";
         else
-          rect.style.backgroundImage = "url(image/jumpr.png)";    
+          rect.style.backgroundImage = "url(image/jumpr.png)";
       }
-      else{
-        if(leftCount == 0 && rightCount ==0)
+      else {
+        if (leftCount == 0 && rightCount == 0)
           rect.style.backgroundImage = "url(image/r1.png)";
-        else if(rightCount > 0){
-          var number = parseInt((rightCount % 16)/2) + 2;
-          rect.style.backgroundImage = "url(image/r"+number+".png)";
-        } 
-        else if(leftCount > 0){
-          var number = parseInt((leftCount % 16)/2) + 2;
-          rect.style.backgroundImage = "url(image/l"+number+".png)";
+        else if (rightCount > 0) {
+          var number = parseInt((rightCount % 16) / 2) + 2;
+          rect.style.backgroundImage = "url(image/r" + number + ".png)";
+        }
+        else if (leftCount > 0) {
+          var number = parseInt((leftCount % 16) / 2) + 2;
+          rect.style.backgroundImage = "url(image/l" + number + ".png)";
         }
       }
     }
@@ -154,7 +163,7 @@ DOMDisplay.prototype.drawActors = function() {
   return wrap;
 };
 
-DOMDisplay.prototype.drawFrame = function() {
+DOMDisplay.prototype.drawFrame = function () {
   if (this.actorLayer)
     this.wrap.removeChild(this.actorLayer);
   this.actorLayer = this.wrap.appendChild(this.drawActors());
@@ -162,7 +171,7 @@ DOMDisplay.prototype.drawFrame = function() {
   this.scrollPlayerIntoView();
 };
 
-DOMDisplay.prototype.scrollPlayerIntoView = function() {
+DOMDisplay.prototype.scrollPlayerIntoView = function () {
   var width = this.wrap.clientWidth;
   var height = this.wrap.clientHeight;
   var margin = width / 3;
@@ -173,7 +182,7 @@ DOMDisplay.prototype.scrollPlayerIntoView = function() {
 
   var player = this.level.player;
   var center = player.pos.plus(player.size.times(0.5))
-                 .times(scale);
+    .times(scale);
 
   if (center.x < left + margin)
     this.wrap.scrollLeft = center.x - margin;
@@ -185,11 +194,11 @@ DOMDisplay.prototype.scrollPlayerIntoView = function() {
     this.wrap.scrollTop = center.y + margin - height;
 };
 
-DOMDisplay.prototype.clear = function() {
+DOMDisplay.prototype.clear = function () {
   this.wrap.parentNode.removeChild(this.wrap);
 };
 
-Level.prototype.obstacleAt = function(pos, size) {
+Level.prototype.obstacleAt = function (pos, size) {
   var xStart = Math.floor(pos.x);
   var xEnd = Math.ceil(pos.x + size.x);
   var yStart = Math.floor(pos.y);
@@ -207,34 +216,53 @@ Level.prototype.obstacleAt = function(pos, size) {
   }
 };
 
-Level.prototype.actorAt = function(actor) {
+Level.prototype.actorAt = function (actor) {
   for (var i = 0; i < this.actors.length; i++) {
     var other = this.actors[i];
     if (other != actor &&
-        actor.pos.x + actor.size.x > other.pos.x &&
-        actor.pos.x < other.pos.x + other.size.x &&
-        actor.pos.y + actor.size.y > other.pos.y &&
-        actor.pos.y < other.pos.y + other.size.y)
+      actor.pos.x + actor.size.x > other.pos.x &&
+      actor.pos.x < other.pos.x + other.size.x &&
+      actor.pos.y + actor.size.y > other.pos.y &&
+      actor.pos.y < other.pos.y + other.size.y)
       return other;
   }
 };
 
+Level.prototype.floatfloorAt = function (pos, size) {
+  var xStart = Math.floor(pos.x);
+  var xEnd = Math.ceil(pos.x + size.x);
+  var yEnd = Math.ceil(pos.y + size.y);
+  var floatFloor;
+  for (var i = 0; i < this.actors.length; i++) {
+    if (this.actors[i].type == "floatfloor") {
+      floatFloor = this.actors[i];
+      break;
+    }
+  }
+  if (floatFloor != null) {
+    if (xStart < floatFloor.pos.x + floatFloor.size.x && xEnd > floatFloor.pos.x && yEnd == floatFloor.pos.y + 1)
+      return true;
+    else
+      return false;
+  }
+}
+
 var maxStep = 0.05;
 
-Level.prototype.animate = function(step, keys) {
+Level.prototype.animate = function (step, keys) {
   if (this.status != null)
     this.finishDelay -= step;
 
   while (step > 0) {
     var thisStep = Math.min(step, maxStep);
-    this.actors.forEach(function(actor) {
+    this.actors.forEach(function (actor) {
       actor.act(thisStep, this, keys);
     }, this);
     step -= thisStep;
   }
 };
 
-Lava.prototype.act = function(step, level) {
+Lava.prototype.act = function (step, level) {
   var newPos = this.pos.plus(this.speed.times(step));
   if (!level.obstacleAt(newPos, this.size))
     this.pos = newPos;
@@ -244,9 +272,17 @@ Lava.prototype.act = function(step, level) {
     this.speed = this.speed.times(-1);
 };
 
+FloatFloor.prototype.act = function (step, level) {
+  var newPos = this.pos.plus(this.speed.times(step));
+  if (!level.obstacleAt(newPos, this.size))
+    this.pos = newPos;
+  else
+    this.speed = this.speed.times(-1);
+};
+
 var wobbleSpeed = 8, wobbleDist = 0.07;
 
-Coin.prototype.act = function(step) {
+Coin.prototype.act = function (step) {
   this.wobble += step * wobbleSpeed;
   var wobblePos = Math.sin(this.wobble) * wobbleDist;
   this.pos = this.basePos.plus(new Vector(0, wobblePos));
@@ -254,21 +290,32 @@ Coin.prototype.act = function(step) {
 
 var playerXSpeed = 7;
 
-Player.prototype.moveX = function(step, level, keys) {
+Player.prototype.moveX = function (step, level, keys) {
+  var otherActor = level.actorAt(this);
   this.speed.x = 0;
   if (keys.left) {
-    leftCount ++;
+    leftCount++;
     rightCount = 0;
     this.speed.x -= playerXSpeed;
   }
-  else if (keys.right){
+  else if (keys.right) {
     rightCount++;
     leftCount = 0;
     this.speed.x += playerXSpeed;
-  } 
-  else{
+  }
+  else {
     leftCount = 0;
     rightCount = 0;
+  }
+  var floor;
+  for (var i = 0; i < level.actors.length; i++) {
+    if (level.actors[i].type == "floatfloor") {
+      floor = level.actors[i];
+      break;
+    }
+  }
+  if (touchfloor) {
+    this.speed.x += floor.speed.x;
   }
   var motion = new Vector(this.speed.x * step, 0);
   var newPos = this.pos.plus(motion);
@@ -282,27 +329,40 @@ Player.prototype.moveX = function(step, level, keys) {
 var gravity = 30;
 var jumpSpeed = 17;
 
-Player.prototype.moveY = function(step, level, keys) {
+Player.prototype.moveY = function (step, level, keys) {
   this.speed.y += step * gravity;
   var motion = new Vector(0, this.speed.y * step);
   var newPos = this.pos.plus(motion);
   var obstacle = level.obstacleAt(newPos, this.size);
   if (obstacle) {
     level.playerTouched(obstacle);
-    if (keys.up && this.speed.y > 0){
+    if (keys.up && this.speed.y > 0) {
       this.speed.y = -jumpSpeed;
       isJump = true;
     }
-    else{
+    else {
       this.speed.y = 0;
       isJump = false;
     }
-  } else {
+  }
+  else if (level.floatfloorAt(newPos, this.size)) {
+    if (keys.up && this.speed.y > 0) {
+      this.speed.y = -jumpSpeed;
+      isJump = true;
+      touchfloor = false;
+    }
+    if (this.speed.y > 0) {
+      this.speed.y = 0;
+      isJump = false;
+      touchfloor = true;
+    }
+  }
+  else {
     this.pos = newPos;
   }
 };
 
-Player.prototype.act = function(step, level, keys) {
+Player.prototype.act = function (step, level, keys) {
   this.moveX(step, level, keys);
   this.moveY(step, level, keys);
 
@@ -317,24 +377,34 @@ Player.prototype.act = function(step, level, keys) {
   }
 };
 
-Level.prototype.playerTouched = function(type, actor) {
+Level.prototype.playerTouched = function (type, actor) {
   if (type == "lava" && this.status == null) {
     this.status = "lost";
     this.finishDelay = 1;
+    this.player.speed.x = 0;
+    leftCount = 0;
+    rightCount = 0;
+    isJump = false;
+    touchfloor = false;
   } else if (type == "coin") {
-    this.actors = this.actors.filter(function(other) {
+    this.actors = this.actors.filter(function (other) {
       return other != actor;
     });
-    if (!this.actors.some(function(actor) {
+    if (!this.actors.some(function (actor) {
       return actor.type == "coin";
     })) {
       this.status = "won";
       this.finishDelay = 1;
+      this.player.speed.x = 0;
+      leftCount = 0;
+      rightCount = 0;
+      isJump = false;
+      touchfloor = false;
     }
   }
 };
 
-var arrowCodes = {37: "left", 38: "up", 39: "right"};
+var arrowCodes = { 37: "left", 38: "up", 39: "right" };
 
 function trackKeys(codes) {
   var pressed = Object.create(null);
@@ -369,7 +439,7 @@ var arrows = trackKeys(arrowCodes);
 
 function runLevel(level, Display, andThen) {
   var display = new Display(document.body, level);
-  runAnimation(function(step) {
+  runAnimation(function (step) {
     level.animate(step, arrows);
     display.drawFrame(step);
     if (level.isFinished()) {
@@ -382,15 +452,40 @@ function runLevel(level, Display, andThen) {
 }
 
 function runGame(plans, Display) {
-  function startLevel(n) {
-    runLevel(new Level(plans[n]), Display, function(status) {
-      if (status == "lost")
-        startLevel(n);
-      else if (n < plans.length - 1)
-        startLevel(n + 1);
-      else
+  function startLevel(n, lives) {
+    runLevel(new Level(plans[n]), Display, function (status) {
+      if (status == "lost") {
+        if (lives > 0) {
+          startLevel(n, lives - 1);
+          document.getElementById("lives").removeChild(document.getElementById("lives").childNodes[0]);
+        } else {
+          console.log("Game over");
+          var img1 = new Image();
+          img1.src="image/live.png";
+          img1.style.width = 25 + "px";
+          img1.style.height = 25 + "px";
+          img1.style.margin = 0 + "px "+ 2 + "px " + 0 + "px " + 2 + "px"; 
+          document.getElementById("lives").appendChild(img1);
+          var img2 = new Image();
+          img2.src="image/live.png";
+          img2.style.width = 25 + "px";
+          img2.style.height = 25 + "px";
+          img2.style.margin = 0 + "px "+ 2 + "px " + 0 + "px " + 2 + "px"; 
+          document.getElementById("lives").appendChild(img2);
+          var img3 = new Image();
+          img3.src="image/live.png";
+          img3.style.width = 25 + "px";
+          img3.style.height = 25 + "px";
+          img3.style.margin = 0 + "px "+ 2 + "px " + 0 + "px " + 2 + "px"; 
+          document.getElementById("lives").appendChild(img3);
+          startLevel(0, 3);
+        }
+      } else if (n < plans.length - 1) {
+        startLevel(n + 1, lives);
+      } else {
         console.log("You win!");
+      }
     });
   }
-  startLevel(0);
+  startLevel(0, 3);
 }
