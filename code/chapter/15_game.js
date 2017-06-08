@@ -13,6 +13,8 @@ var leftCount = 0;
 var rightCount = 0;
 var isJump = false;
 var touchfloor = false;
+var touchswitch = false;
+var number = -1;
 
 function Level(plan) {
   this.width = plan[0].length;
@@ -60,7 +62,9 @@ var actorChars = {
   "@": Player,
   "o": Coin,
   "=": Lava, "|": Lava, "v": Lava,
-  "~": FloatFloor
+  "~": FloatFloor,
+  "#": FloatFloor,
+  "^": Switch
 };
 
 function Player(pos) {
@@ -91,12 +95,25 @@ function Coin(pos) {
 }
 Coin.prototype.type = "coin";
 
-function FloatFloor(pos) {
+function FloatFloor(pos, ch) {
   this.pos = pos;
-  this.size = new Vector(2, 1);
-  this.speed = new Vector(2, 0);
+  if (ch == "~") {
+    this.size = new Vector(2, 1);
+    this.speed = new Vector(2, 0);
+  }
+  else {
+    this.size = new Vector(3, 1);
+    this.speed = new Vector(0, 0);
+  }
 }
 FloatFloor.prototype.type = "floatfloor";
+
+function Switch(pos) {
+  this.pos = pos;
+  this.size = new Vector(1, 1);
+  this.direction = "up";
+}
+Switch.prototype.type = "switch";
 
 var simpleLevel = new Level(simpleLevelPlan);
 
@@ -154,6 +171,11 @@ DOMDisplay.prototype.drawActors = function () {
           rect.style.backgroundImage = "url(image/l" + number + ".png)";
         }
       }
+    } else if (actor.type == "switch") {
+      if (actor.direction == "up")
+        rect.style.backgroundImage = "url(image/up.png)";
+      else
+        rect.style.backgroundImage = "url(image/down.png)";
     }
     rect.style.width = actor.size.x * scale + "px";
     rect.style.height = actor.size.y * scale + "px";
@@ -240,7 +262,7 @@ Level.prototype.floatfloorAt = function (pos, size) {
     }
   }
   if (floatFloor != null) {
-    if (xStart < floatFloor.pos.x + floatFloor.size.x && xEnd > floatFloor.pos.x && yEnd == floatFloor.pos.y + 1)
+    if (xStart < floatFloor.pos.x + floatFloor.size.x && xEnd > floatFloor.pos.x && yEnd >= floatFloor.pos.y + 1)
       return true;
     else
       return false;
@@ -256,7 +278,8 @@ Level.prototype.animate = function (step, keys) {
   while (step > 0) {
     var thisStep = Math.min(step, maxStep);
     this.actors.forEach(function (actor) {
-      actor.act(thisStep, this, keys);
+      if (actor.type != "switch")
+        actor.act(thisStep, this, keys);
     }, this);
     step -= thisStep;
   }
@@ -274,10 +297,18 @@ Lava.prototype.act = function (step, level) {
 
 FloatFloor.prototype.act = function (step, level) {
   var newPos = this.pos.plus(this.speed.times(step));
-  if (!level.obstacleAt(newPos, this.size))
-    this.pos = newPos;
-  else
+  if (!level.obstacleAt(newPos, this.size)) {
+    if (newPos.y <= 17 && this.size.x == 3) {
+      this.speed.y = 0;
+    }
+    else
+      this.pos = newPos;
+  }
+  else {
     this.speed = this.speed.times(-1);
+    if (this.size.x == 3)
+      this.speed.y = 0;
+  }
 };
 
 var wobbleSpeed = 8, wobbleDist = 0.07;
@@ -291,7 +322,6 @@ Coin.prototype.act = function (step) {
 var playerXSpeed = 7;
 
 Player.prototype.moveX = function (step, level, keys) {
-  var otherActor = level.actorAt(this);
   this.speed.x = 0;
   if (keys.left) {
     leftCount++;
@@ -331,6 +361,11 @@ var jumpSpeed = 17;
 
 Player.prototype.moveY = function (step, level, keys) {
   this.speed.y += step * gravity;
+  var f = level.actors.filter(function (actor) {
+    return actor.type == "floatfloor";
+  })[0];
+  if (f.size.x == 3 && touchfloor)
+    this.speed.y = f.speed.y;
   var motion = new Vector(0, this.speed.y * step);
   var newPos = this.pos.plus(motion);
   var obstacle = level.obstacleAt(newPos, this.size);
@@ -352,13 +387,17 @@ Player.prototype.moveY = function (step, level, keys) {
       touchfloor = false;
     }
     if (this.speed.y > 0) {
-      this.speed.y = 0;
+      var f = level.actors.filter(function (actor) {
+        return actor.type == "floatfloor";
+      })[0];
+      this.speed.y = f.speed.y;
       isJump = false;
       touchfloor = true;
     }
   }
   else {
     this.pos = newPos;
+    touchfloor = false;
   }
 };
 
@@ -369,6 +408,8 @@ Player.prototype.act = function (step, level, keys) {
   var otherActor = level.actorAt(this);
   if (otherActor)
     level.playerTouched(otherActor.type, otherActor);
+  else
+    touchswitch = false;
 
   // Losing animation
   if (level.status == "lost") {
@@ -401,6 +442,8 @@ Level.prototype.playerTouched = function (type, actor) {
       isJump = false;
       touchfloor = false;
     }
+  } else if (type == "switch") {
+    touchswitch = true;
   }
 };
 
@@ -439,6 +482,27 @@ var arrows = trackKeys(arrowCodes);
 
 function runLevel(level, Display, andThen) {
   var display = new Display(document.body, level);
+  function switchhandler() {
+    var s;
+    s = level.actors.filter(function (actor) {
+      return actor.type == "switch";
+    })[0];
+    var f;
+    f = level.actors.filter(function (actor) {
+      return actor.type == "floatfloor";
+    })[0];
+    if (event.keyCode == 27 && event.type == "keydown" && touchswitch) {
+      if (s.direction == "up") {
+        s.direction = "down";
+        f.speed.y = 2;
+      }
+      else {
+        s.direction = "up";
+        f.speed.y = -2;
+      }
+    }
+  }
+  addEventListener("keydown", switchhandler);
   runAnimation(function (step) {
     level.animate(step, arrows);
     display.drawFrame(step);
@@ -453,6 +517,7 @@ function runLevel(level, Display, andThen) {
 
 function runGame(plans, Display) {
   function startLevel(n, lives) {
+    number = n;
     runLevel(new Level(plans[n]), Display, function (status) {
       if (status == "lost") {
         if (lives > 0) {
@@ -461,22 +526,22 @@ function runGame(plans, Display) {
         } else {
           console.log("Game over");
           var img1 = new Image();
-          img1.src="image/live.png";
+          img1.src = "image/live.png";
           img1.style.width = 25 + "px";
           img1.style.height = 25 + "px";
-          img1.style.margin = 0 + "px "+ 2 + "px " + 0 + "px " + 2 + "px"; 
+          img1.style.margin = 0 + "px " + 2 + "px " + 0 + "px " + 2 + "px";
           document.getElementById("lives").appendChild(img1);
           var img2 = new Image();
-          img2.src="image/live.png";
+          img2.src = "image/live.png";
           img2.style.width = 25 + "px";
           img2.style.height = 25 + "px";
-          img2.style.margin = 0 + "px "+ 2 + "px " + 0 + "px " + 2 + "px"; 
+          img2.style.margin = 0 + "px " + 2 + "px " + 0 + "px " + 2 + "px";
           document.getElementById("lives").appendChild(img2);
           var img3 = new Image();
-          img3.src="image/live.png";
+          img3.src = "image/live.png";
           img3.style.width = 25 + "px";
           img3.style.height = 25 + "px";
-          img3.style.margin = 0 + "px "+ 2 + "px " + 0 + "px " + 2 + "px"; 
+          img3.style.margin = 0 + "px " + 2 + "px " + 0 + "px " + 2 + "px";
           document.getElementById("lives").appendChild(img3);
           startLevel(0, 3);
         }

@@ -2,8 +2,9 @@
                  table-layout: fixed;
                  border-spacing: 0;   }
 .background td { padding: 0;          }
-.lava          { background: rgb(255, 100, 100); }
-.wall          { background-image: url(../image/wall.png); background-size:100% 100%;}
+.lava { background: rgb(255, 100, 100); }
+.wall { background-image: url(../image/wall.png); background-size:100% 100%;}
+.switch { background-image: url(../image/up.png); background-size:100% 100%;}
 
 .actor  { position: absolute;  }
 .coin   { background-image: url(../image/coin.png); background-size:100% 100%;}
