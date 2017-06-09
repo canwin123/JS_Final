@@ -6,7 +6,87 @@
 
 <body>
   <div id="lives" style="height: 30px;"><img src="image/live.png" width="25" height="25" style="margin: 0px 2px 0px 2px;"/><img src="image/live.png" width="25" height="25" style="margin: 0px 2px 0px 2px;"/><img src="image/live.png" width="25" height="25" style="margin: 0px 2px 0px 2px;"/></div>
-  <script>
+  <div id="time">0秒</div>
+   <script>
     runGame(GAME_LEVELS, DOMDisplay);
+    var second = 0;
+    function tick(){
+	    document.getElementById("time").innerHTML = second + "秒";
+      second++;
+	    window.setTimeout("tick()", 1000);
+    }
+    tick();
+          function initDatabase() {//初始化数据库
+            var db = getCurrentDb();
+            if(!db) {
+                alert("您的浏览器不支持HTML5");
+                return;
+            }
+            db.transaction(function (trans) {
+                trans.executeSql("create table if not exists Game(name text null,second integer null,lives integer null)", [], 
+                function (trans, result) {
+                }, 
+                function (trans, message) {
+                    alert(message);
+                });
+                }, function (trans, result) {
+                }, function (trans, message) {
+            });
+        }
+        initDatabase();
+        function getCurrentDb() {
+            //打开数据库，或者直接连接数据库参数：数据库名称，版本，概述，大小
+            var db = openDatabase("myDb", "1.0", "it's to save game data!", 1024 * 1024);
+            return db;
+        }
+        function showAllTheData() {
+            document.getElementById('tblData').innerHTML = "<tr><td width=100px>姓名</td><td width=100px>时间(秒)</td><td width=100px>生命</td></tr>";
+            var db = getCurrentDb();
+            db.transaction(function (trans) {
+                trans.executeSql("select * from Game order by second", [], function (ts, data) {
+                    if (data) {
+                        for (var i = 0; i < data.rows.length; i++) {
+                            appendDataToTable(data.rows.item(i));//获取某行数据的json对象
+                        };
+                    }
+                }, function (ts, message) {
+                    alert(message);
+                    var tst = message;
+                });
+
+            });
+        }
+
+        function appendDataToTable(data) {//将数据展示到表格里面
+            var n = data.name;
+            var s = data.second;
+            var l = data.lives;
+            
+            var strHtml = "";
+            strHtml += "<tr>";
+            strHtml += "<td>"+n+"</td>";
+            strHtml += "<td>" + s + "</td>";
+            strHtml += "<td>" + l + "</td>";
+            strHtml += "</tr>";
+            document.getElementById("tblData").innerHTML += strHtml;
+        }
+
+        function removeAllData () {
+          var db = getCurrentDb();
+            db.transaction(function (trans) {
+                trans.executeSql("delete from Game", [], function (ts, data) {
+            
+                }, function (ts, message) {
+                    alert(message);
+                    var tst = message;
+                });
+
+            });
+            showAllTheData();
+        }
   </script>
+  <table id="tblData" style="position: absolute; left: 800px">
+            
+  </table>
+  <input id="clear" type="button" value="清空所有数据" onclick="removeAllData()" style="position: absolute; left: 800px; top:500px; visibility:hidden;"/>
 </body>

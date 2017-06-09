@@ -14,7 +14,7 @@ var rightCount = 0;
 var isJump = false;
 var touchfloor = false;
 var touchswitch = false;
-var number = -1;
+var isMoving = false;
 
 function Level(plan) {
   this.width = plan[0].length;
@@ -61,7 +61,7 @@ Vector.prototype.times = function (factor) {
 var actorChars = {
   "@": Player,
   "o": Coin,
-  "=": Lava, "|": Lava, "v": Lava,
+  "=": Lava, "|": Lava, "v": Lava, "$": Lava,
   "~": FloatFloor,
   "#": FloatFloor,
   "^": Switch
@@ -84,6 +84,10 @@ function Lava(pos, ch) {
   } else if (ch == "v") {
     this.speed = new Vector(0, 3);
     this.repeatPos = pos;
+  } else if (ch == "$") {
+    this.speed = new Vector(2, 0);
+    this.direction = "right";
+    this.count = 0;
   }
 }
 Lava.prototype.type = "lava";
@@ -245,15 +249,17 @@ Level.prototype.actorAt = function (actor) {
       actor.pos.x + actor.size.x > other.pos.x &&
       actor.pos.x < other.pos.x + other.size.x &&
       actor.pos.y + actor.size.y > other.pos.y &&
-      actor.pos.y < other.pos.y + other.size.y)
-      return other;
+      actor.pos.y < other.pos.y + other.size.y) {
+      if (other.type != "floatfloor")
+        return other;
+    }
   }
 };
 
 Level.prototype.floatfloorAt = function (pos, size) {
   var xStart = Math.floor(pos.x);
   var xEnd = Math.ceil(pos.x + size.x);
-  var yEnd = Math.ceil(pos.y + size.y);
+  var yEnd = pos.y + size.y;
   var floatFloor;
   for (var i = 0; i < this.actors.length; i++) {
     if (this.actors[i].type == "floatfloor") {
@@ -262,7 +268,7 @@ Level.prototype.floatfloorAt = function (pos, size) {
     }
   }
   if (floatFloor != null) {
-    if (xStart < floatFloor.pos.x + floatFloor.size.x && xEnd > floatFloor.pos.x && yEnd >= floatFloor.pos.y + 1)
+    if (xStart < floatFloor.pos.x + floatFloor.size.x && xEnd > floatFloor.pos.x && yEnd >= floatFloor.pos.y)
       return true;
     else
       return false;
@@ -287,12 +293,41 @@ Level.prototype.animate = function (step, keys) {
 
 Lava.prototype.act = function (step, level) {
   var newPos = this.pos.plus(this.speed.times(step));
-  if (!level.obstacleAt(newPos, this.size))
-    this.pos = newPos;
-  else if (this.repeatPos)
-    this.pos = this.repeatPos;
-  else
-    this.speed = this.speed.times(-1);
+  if (!this.direction) {
+    if (!level.obstacleAt(newPos, this.size))
+      this.pos = newPos;
+    else if (this.repeatPos)
+      this.pos = this.repeatPos;
+    else
+      this.speed = this.speed.times(-1);
+  } else {
+    if (!level.obstacleAt(newPos, this.size)) {
+      this.pos = newPos;
+      if (this.count <= Math.random() * 1000 + 100) {
+        this.count++;
+      } else {
+        if (this.direction == "left") {
+          this.direction = "right"
+          this.count = 0;
+        } else {
+          this.direction = "left"
+          this.count = 0;
+        }
+      }
+    } else {
+      if (this.direction == "left") {
+        this.direction = "right"
+        this.count = 0;
+      } else {
+        this.direction = "left"
+        this.count = 0;
+      }
+    }
+    if (this.direction == "left")
+      this.speed = new Vector(-3, 0);
+    else
+      this.speed = new Vector(3, 0);
+  }
 };
 
 FloatFloor.prototype.act = function (step, level) {
@@ -300,14 +335,17 @@ FloatFloor.prototype.act = function (step, level) {
   if (!level.obstacleAt(newPos, this.size)) {
     if (newPos.y <= 17 && this.size.x == 3) {
       this.speed.y = 0;
+      isMoving = false;
     }
     else
       this.pos = newPos;
   }
   else {
     this.speed = this.speed.times(-1);
-    if (this.size.x == 3)
+    if (this.size.x == 3) {
       this.speed.y = 0;
+      isMoving = false;
+    }
   }
 };
 
@@ -364,8 +402,17 @@ Player.prototype.moveY = function (step, level, keys) {
   var f = level.actors.filter(function (actor) {
     return actor.type == "floatfloor";
   })[0];
-  if (f.size.x == 3 && touchfloor)
-    this.speed.y = f.speed.y;
+  if (f.size.x == 3 && touchfloor && isMoving) {
+    if (keys.up && this.speed.y > 0) {
+      this.speed.y = -jumpSpeed;
+      isJump = true;
+      touchfloor = false;
+    } else {
+      this.speed.y = f.speed.y;
+      isJump = false;
+      touchfloor = true;
+    }
+  }
   var motion = new Vector(0, this.speed.y * step);
   var newPos = this.pos.plus(motion);
   var obstacle = level.obstacleAt(newPos, this.size);
@@ -387,17 +434,13 @@ Player.prototype.moveY = function (step, level, keys) {
       touchfloor = false;
     }
     if (this.speed.y > 0) {
-      var f = level.actors.filter(function (actor) {
-        return actor.type == "floatfloor";
-      })[0];
-      this.speed.y = f.speed.y;
+      this.speed.y = 0;
       isJump = false;
       touchfloor = true;
     }
   }
   else {
     this.pos = newPos;
-    touchfloor = false;
   }
 };
 
@@ -422,11 +465,11 @@ Level.prototype.playerTouched = function (type, actor) {
   if (type == "lava" && this.status == null) {
     this.status = "lost";
     this.finishDelay = 1;
-    this.player.speed.x = 0;
     leftCount = 0;
     rightCount = 0;
     isJump = false;
     touchfloor = false;
+    isMoving = false;
   } else if (type == "coin") {
     this.actors = this.actors.filter(function (other) {
       return other != actor;
@@ -436,11 +479,11 @@ Level.prototype.playerTouched = function (type, actor) {
     })) {
       this.status = "won";
       this.finishDelay = 1;
-      this.player.speed.x = 0;
       leftCount = 0;
       rightCount = 0;
       isJump = false;
       touchfloor = false;
+      isMoving = false;
     }
   } else if (type == "switch") {
     touchswitch = true;
@@ -500,6 +543,8 @@ function runLevel(level, Display, andThen) {
         s.direction = "up";
         f.speed.y = -2;
       }
+      isMoving = true;
+      touchfloor = false;
     }
   }
   addEventListener("keydown", switchhandler);
@@ -517,7 +562,14 @@ function runLevel(level, Display, andThen) {
 
 function runGame(plans, Display) {
   function startLevel(n, lives) {
-    number = n;
+    leftCount = 0;
+    rightCount = 0;
+    isJump = false;
+    touchfloor = false;
+    isMoving = false;
+    arrows.up = false;
+    arrows.left = false;
+    arrows.right = false;
     runLevel(new Level(plans[n]), Display, function (status) {
       if (status == "lost") {
         if (lives > 0) {
@@ -544,8 +596,23 @@ function runGame(plans, Display) {
           img3.style.margin = 0 + "px " + 2 + "px " + 0 + "px " + 2 + "px";
           document.getElementById("lives").appendChild(img3);
           startLevel(0, 3);
+          second = 0;
         }
       } else if (n < plans.length - 1) {
+        var name = prompt("请输入您的名字", "");
+        if(name){
+        var db = getCurrentDb();
+          //插入数据
+        db.transaction(function (trans) {
+          trans.executeSql("insert into Game(name,second,lives) values(?,?,?) ", [name, second, lives], function (ts, data) {
+          }, function (ts, message) {
+                        alert(message);
+                    });
+
+                });
+                showAllTheData();
+        }
+        document.getElementById("clear").style.visibility="visible";
         startLevel(n + 1, lives);
       } else {
         console.log("You win!");
